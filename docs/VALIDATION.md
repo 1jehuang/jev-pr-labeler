@@ -30,11 +30,12 @@ Ran the full CLI against [Jcode PR #1305](https://github.com/1jehuang/jcode/pull
   `size: S` (0.98), then wrote and read back those labels successfully.
 - That apply request used 4,321 input tokens and cost $0.000181482 as reported
   by OpenRouter. This is an example, not a cost guarantee.
-- The integration PR changes one pinned workflow and is intentionally unmerged.
+- The integration PR changed one pinned workflow and was merged after automatic operation was requested.
 
-The action has not yet been exercised as a production `pull_request_target`
-workflow in Jcode. Activation requires merging the integration PR. Its
-OpenRouter repository secret has been configured separately, not in source.
+The production `pull_request_target` workflow is now enabled and exercised on
+Jcode PR #1306. PR-open, PR-update, and manual runs all passed. Its OpenRouter
+repository secret is configured separately, not in source. See
+[the acceptance map](ACCEPTANCE.md) for run links and observed label results.
 
 ## Synthetic live semantic checks
 

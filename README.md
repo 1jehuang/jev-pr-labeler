@@ -61,6 +61,27 @@ Only the transient GitHub token and OpenRouter key are required. No personal
 GitHub token needs to be stored in Actions. The key goes only to OpenRouter;
 GitHub credentials go only to GitHub. Redirects are refused.
 
+## Operating Jcode's deployment
+
+The workflow is enabled in `1jehuang/jcode`. GitHub-hosted runners start on PR
+open, reopen, push/update, edit, or ready-for-review events. No local daemon,
+scheduled process, or server needs to remain online.
+
+For an existing **open** PR, run on demand (replace `123`):
+
+```bash
+gh workflow run label-pr.yml -R 1jehuang/jcode -f pull-request=123
+gh run list -R 1jehuang/jcode --workflow label-pr.yml --limit 10
+```
+
+You can also use **Actions → Semantic PR labels → Run workflow**. Inspect failed
+run logs for missing credentials, unavailable patches, or context-budget limits.
+Low-confidence categories abstain without replacing existing labels. The key is
+spend-capped, and this workflow shares that key's budget with its other uses.
+
+See [acceptance evidence](docs/ACCEPTANCE.md) for actual production runs and the
+requirement-by-requirement validation, not just a test count.
+
 ## Decision and update policy
 
 - One request asks independent typed questions about the title, description,

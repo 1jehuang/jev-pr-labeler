@@ -52,4 +52,27 @@ A real `--all-open --apply` pass accounted for all 25 existing Jcode PRs:
   Greptile summary. The oversized PR itself was not submitted to the model.
 - Backfill results are structured per PR, not hidden as generic workflow success.
 
-Deployment and live event validation are recorded after the reviewed action is pinned.
+## Deployed and observed
+
+Jcode PR [#1308](https://github.com/1jehuang/jcode/pull/1308) deployed the reviewed
+workflow, pinned to `e0f57f97afccad77134025434e1eb83f24c0f554`. All 82 tests pass on
+Python 3.11 and 3.14 in [the pinned-revision CI run](https://github.com/1jehuang/jev-pr-labeler/actions/runs/35413301370).
+
+Concrete production checks:
+
+| Requirement | Check and observed result |
+| --- | --- |
+| Wait without a completed review | [Manual run on #1276](https://github.com/1jehuang/jcode/actions/runs/35413332261) returned `waiting_for_greptile` and made no label changes |
+| Do not label before Greptile | Fixture #1309 had no labels while Greptile was in progress; its exact current-head review completed at `2026-09-19T01:44:00Z` |
+| Real completion triggers Jev | Native [check-suite run](https://github.com/1jehuang/jcode/actions/runs/35413551259) used review check `105817133276`, applied `type: docs` and `size: XS`, and verified readback |
+| Enforce ordering, not just eventual labels | GitHub issue events show both labels applied by `github-actions[bot]` at `01:44:12Z`, twelve seconds AFTER review completion |
+| Duplicate completion is safe | Native [check-run run](https://github.com/1jehuang/jcode/actions/runs/35413551470) succeeded with `add: []`, `remove: []`, `verified: true` |
+| Review completion is not merge approval | The fixture never received `ready-to-merge`; the label is absent from all model questions and remains manual |
+| Clean acceptance side effects | Fixture #1309 was closed without merging; no contributor PR branches were changed by the backlog pass |
+
+Independent review identified and prompted fixes for GitHub's suite-rerequest
+window and workflow-level concurrency allowing unrelated app events to displace
+pending Greptile runs. The deployed concurrency is job-scoped after the trusted-app
+condition and also includes app identity in its group. The complete supported
+workflow is verified; universal model accuracy and successful labeling of the
+blocked historical backlog are not claimed.

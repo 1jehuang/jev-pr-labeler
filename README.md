@@ -96,8 +96,8 @@ python3 -m jev_labeler.after_review --repo owner/repo --all-open --apply --ensur
 
 This emits an outcome for every open PR: labeled, `waiting_for_greptile`,
 `blocked_evidence`, or error. It never treats missing evidence as merge readiness.
-For direct local classification with review context, use `python3 -m jev_labeler
---repo owner/repo --pr 123 --require-greptile`. The original CLI can still be used
+For direct local classification with review context, use
+`python3 -m jev_labeler --repo owner/repo --pr 123 --require-greptile`. The original CLI can still be used
 without that flag for explicitly independent, diff-only use. The action defaults
 to requiring Greptile; `require-greptile: 'false'` is an explicit independent-use
 opt-out, not enabled in Jcode.

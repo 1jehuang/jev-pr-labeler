@@ -1,8 +1,8 @@
 name: Jev PR Labeler
-description: Classify PR type, area, platform, and semantic scope with Jev.
+description: Classify PR labels after a completed Greptile review, using semantic scope.
 inputs:
   github-token:
-    description: GitHub token with pull-requests write and issues read/write permissions
+    description: GitHub token with checks read and pull-requests/issues write permissions
     required: true
   openrouter-api-key:
     description: OpenRouter API key authorized to use Jev
@@ -11,8 +11,14 @@ inputs:
     description: GitHub owner/repository
     required: true
   pull-request:
-    description: Positive PR number
-    required: true
+    description: Positive PR number (exclusive with check-sha)
+    default: ''
+  check-sha:
+    description: Completed check head SHA, resolved to matching current open PRs
+    default: ''
+  require-greptile:
+    description: Wait for a completed current-head Greptile review. Explicit opt-out for independent deployments.
+    default: 'true'
   apply:
     description: Set to true to apply labels. Default is dry-run.
     default: 'false'
@@ -28,14 +34,30 @@ runs:
         OPENROUTER_API_KEY: ${{ inputs.openrouter-api-key }}
         LABEL_REPOSITORY: ${{ inputs.repository }}
         LABEL_PR: ${{ inputs.pull-request }}
+        LABEL_CHECK_SHA: ${{ inputs.check-sha }}
+        LABEL_REQUIRE_REVIEW: ${{ inputs.require-greptile }}
         LABEL_APPLY: ${{ inputs.apply }}
       run: |
         cd "$GITHUB_ACTION_PATH"
-        args=(--repo "$LABEL_REPOSITORY" --pr "$LABEL_PR")
+        args=(--repo "$LABEL_REPOSITORY")
+        if [[ -n "$LABEL_PR" && -z "$LABEL_CHECK_SHA" ]]; then
+          args+=(--pr "$LABEL_PR")
+        elif [[ -n "$LABEL_CHECK_SHA" && -z "$LABEL_PR" ]]; then
+          args+=(--check-sha "$LABEL_CHECK_SHA")
+        else
+          echo 'Provide exactly one of pull-request or check-sha' >&2
+          exit 1
+        fi
+        if [[ "$LABEL_REQUIRE_REVIEW" == "false" ]]; then
+          args+=(--without-greptile)
+        elif [[ "$LABEL_REQUIRE_REVIEW" != "true" ]]; then
+          echo 'require-greptile must be true or false' >&2
+          exit 1
+        fi
         if [[ "$LABEL_APPLY" == "true" ]]; then
           args+=(--apply --ensure-labels)
         elif [[ "$LABEL_APPLY" != "false" ]]; then
           echo 'apply must be true or false' >&2
           exit 1
         fi
-        python3 -m jev_labeler "${args[@]}"
+        python3 -m jev_labeler.after_review "${args[@]}"

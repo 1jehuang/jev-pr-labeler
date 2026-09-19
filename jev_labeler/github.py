@@ -14,10 +14,13 @@ class GitHub:
     def request(self, path, method="GET", body=None):
         return request_json(self.root + path, self.token, method, body)
 
-    def pages(self, path, max_pages=30):
+    def pages(self, path, max_pages=30, key=None):
         result = []
         for page in range(1, max_pages + 1):
-            batch = self.request(f"{path}?per_page=100&page={page}")
+            separator = "&" if "?" in path else "?"
+            batch = self.request(f"{path}{separator}per_page=100&page={page}")
+            if key is not None:
+                batch = batch[key]
             if not isinstance(batch, list):
                 raise RuntimeError("Expected a GitHub list response.")
             result.extend(batch)

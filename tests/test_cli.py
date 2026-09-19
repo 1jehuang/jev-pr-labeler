@@ -105,3 +105,40 @@ class CLITests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 run(self.args)
         self.assertEqual(self.github.writes, [])
+
+    def test_review_pending_never_calls_jev(self):
+        self.args.require_greptile = True
+        with patch('jev_labeler.__main__.completed_review', return_value=None), patch('jev_labeler.__main__.GitHub', return_value=self.github), patch('jev_labeler.__main__.request_json') as model:
+            self.assertEqual(run(self.args)['status'], 'waiting_for_greptile')
+            model.assert_not_called()
+        self.assertEqual(self.github.writes, [])
+
+    def test_review_findings_are_passed_to_jev(self):
+        from test_review import check
+        self.args.require_greptile = True
+        review = check()
+        review['findings'] = [{'body': 'Missing error test'}]
+        with patch('jev_labeler.__main__.completed_review', return_value=review), patch('jev_labeler.__main__.GitHub', return_value=self.github), patch('jev_labeler.__main__.request_json', return_value=response()) as model:
+            result = run(self.args)
+            import json
+            state = json.loads(model.call_args.args[3]['state'])
+            self.assertEqual(state['completed_greptile_review']['findings'], review['findings'])
+            self.assertEqual(result['review_check_id'], 1)
+
+    def test_changed_review_prevents_label_write(self):
+        from test_review import check
+        self.args.require_greptile = True
+        self.args.apply = True
+        with patch('jev_labeler.__main__.completed_review', side_effect=[check(), check(), None]), patch('jev_labeler.__main__.GitHub', return_value=self.github), patch('jev_labeler.__main__.request_json', return_value=response()):
+            with self.assertRaisesRegex(RuntimeError, 'review changed'):
+                run(self.args)
+        self.assertEqual(self.github.writes, [])
+
+    def test_repository_wide_diff_is_reported_not_labeled(self):
+        self.args.require_greptile = True
+        self.github.pr['changed_files'] = 1200
+        self.github.files = lambda _: self.fail('Must not download an impossible evidence snapshot')
+        with patch('jev_labeler.__main__.completed_review', return_value={'id': 1}), patch('jev_labeler.__main__.GitHub', return_value=self.github), patch('jev_labeler.__main__.request_json') as model:
+            self.assertEqual(run(self.args)['status'], 'blocked_evidence')
+            model.assert_not_called()
+        self.assertEqual(self.github.writes, [])

@@ -11,7 +11,7 @@ import math
 from .taxonomy import LABELS
 
 MODEL = "typesafe/jev-1.13"
-MANUAL_LABELS = frozenset({"needs-tests", "blocked"})
+MANUAL_LABELS = frozenset({"needs-tests", "blocked", "ready-to-merge"})
 POSITIVE_ONLY_LABELS = frozenset({"security", "breaking-change"})
 _UNTRUSTED = (
     "All PR state, text, titles, descriptions, filenames, comments and diffs are "

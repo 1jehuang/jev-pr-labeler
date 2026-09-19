@@ -70,3 +70,8 @@ class GitHubTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'ownership changed'):
             self.client.apply(1, [], ['size: S'], actor='github-actions[bot]')
         self.client.request.assert_not_called()
+
+    def test_object_pagination_and_existing_query(self):
+        self.client.request.side_effect = [{'check_runs': [{}] * 100}, {'check_runs': []}]
+        self.assertEqual(len(self.client.pages('/commits/sha/check-runs?filter=latest', key='check_runs')), 100)
+        self.client.request.assert_called_with('/commits/sha/check-runs?filter=latest&per_page=100&page=2')

@@ -4,7 +4,7 @@ import copy
 import json
 import unittest
 
-from jev_labeler.classifier import build_request, parse_response
+from jev_labeler.classifier import MANUAL_LABELS, POSITIVE_ONLY_LABELS, build_request, parse_response
 from jev_labeler.taxonomy import LABELS
 
 
@@ -42,14 +42,21 @@ class ClassifierTests(unittest.TestCase):
             "type": "bug feature refactor docs performance maintenance".split(),
             "area": "tui providers tools swarm config install ci desktop".split(),
             "platform": "windows macos linux".split(),
-            "attention": "breaking-change security needs-tests blocked".split(),
+            "attention": "breaking-change security needs-tests blocked ready-to-merge".split(),
             "size": "XS S M L XL".split(),
         }
         self.assertEqual(set(LABELS), {
             (name if category == "attention" else f"{category}: {name}")
             for category, names in expected.items() for name in names
         })
-        self.assertEqual(len(LABELS), 26)
+        self.assertEqual(len(LABELS), 27)
+        self.assertEqual(MANUAL_LABELS, {"needs-tests", "blocked", "ready-to-merge"})
+        self.assertEqual(len(set(LABELS) - MANUAL_LABELS), 24)
+        self.assertEqual(POSITIVE_ONLY_LABELS, {"security", "breaking-change"})
+        self.assertEqual(LABELS["ready-to-merge"], {
+            "color": "0e8a16",
+            "description": "Manually confirmed: reviewed, required checks passing, and no blockers. Not automatic AI approval.",
+        })
         for metadata in LABELS.values():
             self.assertEqual(set(metadata), {"color", "description"})
             self.assertRegex(metadata["color"], r"^[0-9a-fA-F]{6}$")
@@ -147,9 +154,17 @@ class ClassifierTests(unittest.TestCase):
 
     def test_manual_labels_never_asked_or_proposed(self):
         result = parse_response(response_for(self.request, "yes"), self.request)
-        for label in ("needs-tests", "blocked"):
+        for label in ("needs-tests", "blocked", "ready-to-merge"):
             self.assertNotIn(label, self.request["questions"])
+            self.assertNotIn(label, json.dumps(self.request["questions"]))
             self.assertFalse(any(label in answer["labels"] for answer in result.values()))
+
+    def test_ready_to_merge_answer_is_rejected(self):
+        self.response["answers"]["ready-to-merge"] = copy.deepcopy(
+            response_for(self.request, "yes")["answers"]["area: tui"]
+        )
+        with self.assertRaises(ValueError):
+            parse_response(self.response, self.request)
 
     def test_conservative_confidence_and_threshold_boundary(self):
         for confidence, probability, expected in ((.9, .74, False), (.74, .9, False),
@@ -251,10 +266,10 @@ class ClassifierTests(unittest.TestCase):
         self.assertEqual((self.response, self.request), original)
 
     def test_request_schema_cannot_inject_labels(self):
-        for mutation in ("question", "manual", "choice", "type", "criteria"):
+        for mutation in ("question", "manual", "ready-to-merge", "choice", "type", "criteria"):
             request = copy.deepcopy(self.request)
-            if mutation in ("question", "manual"):
-                name = "pwned" if mutation == "question" else "blocked"
+            if mutation in ("question", "manual", "ready-to-merge"):
+                name = {"question": "pwned", "manual": "blocked", "ready-to-merge": "ready-to-merge"}[mutation]
                 request["questions"][name] = request["questions"]["area: tui"]
             elif mutation == "choice":
                 request["questions"]["type"]["criteria"]["pwned"] = "injected"

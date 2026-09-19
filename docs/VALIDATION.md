@@ -1,5 +1,8 @@
 # Validation record
 
+> Historical first-deployment evidence. Current Greptile-ordered behavior and the
+> 27-label taxonomy are documented in [REVIEW_ORDER.md](REVIEW_ORDER.md).
+
 Observed on 2026-09-19 using OpenRouter `typesafe/jev-1.13-20260917`.
 These observations are integration checks, not an accuracy benchmark.
 

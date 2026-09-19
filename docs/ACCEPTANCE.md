@@ -1,5 +1,8 @@
 # Acceptance map and interpretation audit
 
+> Historical first-deployment evidence. Current Greptile-ordered behavior and the
+> 27-label taxonomy are documented in [REVIEW_ORDER.md](REVIEW_ORDER.md).
+
 Verified 2026-09-19. Production action code is pinned to
 `07e219fcdcfd5b94463f492760e33e5f0baa99c2`. Subsequent repository commits add
 operational documentation and acceptance workflows, not changes to that runtime.

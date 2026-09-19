@@ -22,6 +22,7 @@ LABELS: dict[str, dict[str, str]] = {
     "security": {"color": "b60205", "description": "Security-sensitive change or vulnerability remediation."},
     "needs-tests": {"color": "e4e669", "description": "Manual review indicates additional tests are needed."},
     "blocked": {"color": "e4e669", "description": "Manually identified dependency or workflow blocker."},
+    "ready-to-merge": {"color": "0e8a16", "description": "Manually confirmed: reviewed, required checks passing, and no blockers. Not automatic AI approval."},
     "size: XS": {"color": "c2e0c6", "description": "Trivial change such as a typo, requiring no design and no runtime or CI policy change."},
     "size: S": {"color": "a2eeef", "description": "Focused change within one component or one existing workflow, even when calling an external service."},
     "size: M": {"color": "0075ca", "description": "Substantive change to a subsystem or related components."},

@@ -14,7 +14,7 @@ have broader scope than a large mechanical rename.
 | Area (multiple) | `area: tui`, `area: providers`, `area: tools`, `area: swarm`, `area: config`, `area: install`, `area: ci`, `area: desktop` |
 | Platform (only when specific) | `platform: windows`, `platform: macos`, `platform: linux` |
 | Attention (positive evidence only) | `breaking-change`, `security` |
-| Manual workflow state | `needs-tests`, `blocked` |
+| Manual workflow state | `needs-tests`, `blocked`, `ready-to-merge` |
 
 | Size | Conceptual scope |
 | --- | --- |
@@ -51,10 +51,11 @@ The optional package entry point is `jev-pr-labeler` after `pip install .`.
 2. Add an `OPENROUTER_API_KEY` repository secret. Use a dedicated, spend-capped key.
 3. Copy [`examples/label-pr.yml`](examples/label-pr.yml) into the target repository's
    `.github/workflows/label-pr.yml`, replacing the action SHA placeholder.
-4. Merge the workflow onto the default branch. New/updated PRs then get classified.
+4. Merge the workflow onto the default branch. Jev runs after Greptile completes a review of the current PR head.
 
-The workflow uses `pull_request_target` so fork PRs work. It **never checks out
-PR code**, downloads PR artifacts, installs PR dependencies, or executes PR text.
+The workflow uses Greptile `check_run` / `check_suite` completion events and a
+manual dispatch option. It validates the official app ID and current PR head,
+even when GitHub provides an empty PR association. It **never checks out PR code**, downloads PR artifacts, installs PR dependencies, or executes PR text.
 The composite action executes only the reviewed pinned action's Python code.
 Use a fresh hosted runner, not a self-hosted runner shared with untrusted jobs.
 Only the transient GitHub token and OpenRouter key are required. No personal
@@ -63,9 +64,10 @@ GitHub credentials go only to GitHub. Redirects are refused.
 
 ## Operating Jcode's deployment
 
-The workflow is enabled in `1jehuang/jcode`. GitHub-hosted runners start on PR
-open, reopen, push/update, edit, or ready-for-review events. No local daemon,
-scheduled process, or server needs to remain online.
+Jcode's deployment is review-ordered: **Greptile → Jev labels → human merge decision**.
+GitHub-hosted runners start when Greptile finishes, not immediately on PR open.
+Missing, pending, rerun-requested, or old-head reviews leave labeling waiting.
+No local daemon, scheduled process, or server needs to remain online.
 
 For an existing **open** PR, run on demand (replace `123`):
 
@@ -76,11 +78,29 @@ gh run list -R 1jehuang/jcode --workflow label-pr.yml --limit 10
 
 You can also use **Actions → Semantic PR labels → Run workflow**. Inspect failed
 run logs for missing credentials, unavailable patches, or context-budget limits.
-Low-confidence categories abstain without replacing existing labels. The key is
+Manual runs still require a completed current-head Greptile review. Low-confidence
+categories abstain without replacing existing labels. The key is
 spend-capped, and this workflow shares that key's budget with its other uses.
 
 See [acceptance evidence](docs/ACCEPTANCE.md) for actual production runs and the
 requirement-by-requirement validation, not just a test count.
+
+## One-time backlog pass
+
+Existing PRs do not receive a retroactive webhook just because the workflow was
+installed. Run a bounded, review-gated pass from this repository:
+
+```bash
+python3 -m jev_labeler.after_review --repo owner/repo --all-open --apply --ensure-labels
+```
+
+This emits an outcome for every open PR: labeled, `waiting_for_greptile`,
+`blocked_evidence`, or error. It never treats missing evidence as merge readiness.
+For direct local classification with review context, use `python3 -m jev_labeler
+--repo owner/repo --pr 123 --require-greptile`. The original CLI can still be used
+without that flag for explicitly independent, diff-only use. The action defaults
+to requiring Greptile; `require-greptile: 'false'` is an explicit independent-use
+opt-out, not enabled in Jcode.
 
 ## Decision and update policy
 
@@ -96,15 +116,20 @@ requirement-by-requirement validation, not just a test count.
   Local runs are add-only and do not replace existing type/size labels.
 - Other automation using `github-actions[bot]` should not manage the same taxonomy.
   To override a bot label, remove it and apply your preferred label manually.
-- `security` and `breaking-change` are never automatically removed. `needs-tests`
-  and `blocked` are manual, not guessed from a patch.
+- `security` and `breaking-change` are never automatically removed. `needs-tests`,
+  `blocked`, and `ready-to-merge` are manual, never proposed by Jev. Readiness means
+  the current revision is reviewer-approved, required checks pass, and no blockers
+  remain. Reviewers must remove/reassess readiness when new commits arrive.
 - The head SHA, base SHA, title, body, state, and labels are rechecked before writes.
   Ownership is rechecked before removals, but GitHub has no atomic compare-and-swap
   label API: an edit during the final API writes can still race. Human-label
   preservation is best-effort, not an absolute concurrency guarantee. Writes are incremental, not a destructive replace-all.
 - HTTP errors can leave a partial label update. The command fails, rather than
   claiming success; rerunning reconciles the next fresh snapshot.
-- One PR's workflow runs are serialized. New commits trigger another run.
+- Repeated check events for a head are serialized. A new head waits for its own
+  Greptile review. Both run and suite completion are handled because a rerequest
+  may reset a suite before the check run updates. Manual/check overlap is guarded
+  by fresh PR/review snapshots; label writes remain best-effort and non-atomic.
 
 ## Limits and privacy
 

@@ -16,11 +16,6 @@ permissions:
   checks: read
   pull-requests: write
   issues: write
-# Serialize repeated events for one head without dropping other PRs' review events.
-# Manual/check overlap is also guarded by fresh PR and review snapshots.
-concurrency:
-  group: jev-labels-${{ github.repository }}-${{ github.event.check_run.head_sha || github.event.check_suite.head_sha || inputs.pull-request }}
-  cancel-in-progress: false
 jobs:
   label:
     if: >-
@@ -28,6 +23,11 @@ jobs:
       (github.event.check_run.app.id == 867647 &&
        github.event.check_run.name == 'Greptile Review') ||
       (github.event_name == 'check_suite' && github.event.check_suite.app.id == 867647)
+    # Apply the trusted-app condition before acquiring a concurrency slot.
+    # Other apps' checks must never displace a pending Greptile completion.
+    concurrency:
+      group: jev-labels-${{ github.repository }}-${{ github.event.check_run.app.id || github.event.check_suite.app.id || 'manual' }}-${{ github.event.check_run.head_sha || github.event.check_suite.head_sha || inputs.pull-request }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

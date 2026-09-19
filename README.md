@@ -88,12 +88,27 @@ requirement-by-requirement validation, not just a test count.
 ## One-time backlog pass
 
 Existing PRs do not receive a retroactive webhook just because the workflow was
-installed. Run a bounded, review-gated pass from this repository:
+installed. For **bot-managed** labels, dispatch the deployed workflow for existing
+PRs (this example is bounded to the first 100 open PRs):
 
 ```bash
-python3 -m jev_labeler.after_review --repo owner/repo --all-open --apply --ensure-labels
+gh pr list -R owner/repo --state open --limit 100 --json number --jq '.[].number' |
+while read -r pr; do
+  gh workflow run label-pr.yml -R owner/repo -f pull-request="$pr"
+done
 ```
 
+Hosted runs apply labels as `github-actions[bot]`, so future runs can safely
+recognize their ownership. A local apply using your personal token applies labels
+**as you**, and the service intentionally treats those as manual overrides. Use
+local apply only when that ownership is intended. For local inspection, omit
+`--apply` from the bounded, review-gated CLI pass:
+
+```bash
+python3 -m jev_labeler.after_review --repo owner/repo --all-open
+```
+
+Add `--apply --ensure-labels` only for deliberately user-owned labels.
 This emits an outcome for every open PR: labeled, `waiting_for_greptile`,
 `blocked_evidence`, or error. It never treats missing evidence as merge readiness.
 For direct local classification with review context, use

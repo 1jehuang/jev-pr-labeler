@@ -88,6 +88,27 @@ class ClassifierTests(unittest.TestCase):
                        "cross-subsystem", "architecture or migration", "bulk mechanical rename"):
             self.assertIn(phrase, text)
 
+    def test_actual_diff_and_automation_prompt_guidance(self):
+        questions = self.request["questions"]
+        for question in questions.values():
+            self.assertIn("actual diff", question["instructions"])
+            self.assertIn("over boilerplate mentions", question["instructions"])
+            self.assertIn("not the whole external dependency", question["instructions"])
+        self.assertIn("not a user runtime feature", questions["type"]["instructions"])
+        self.assertIn("prebuilt action", questions["type"]["instructions"])
+        self.assertIn("CI or repository automation", questions["type"]["criteria"]["maintenance"])
+        for key, question in questions.items():
+            if key.startswith("area: "):
+                self.assertIn("actually changed subsystem", question["instructions"])
+                self.assertIn("merely mentioned or called", question["instructions"])
+        size = questions["size"]
+        for phrase in ("no runtime or CI policy change", "one existing workflow",
+                       "even when calling an external service"):
+            self.assertIn(phrase, " ".join(size["instructions"].split()))
+        self.assertIn("no runtime or CI policy change", size["criteria"]["XS"])
+        self.assertIn("one existing workflow", size["criteria"]["S"])
+        self.assertIn("related components", size["criteria"]["M"])
+
     def test_invalid_state(self):
         for state in (None, [], "text", {"x": object()}, {"x": float("nan")}, {"x": float("inf")}):
             with self.subTest(state=state), self.assertRaises(ValueError):

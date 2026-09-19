@@ -6,12 +6,11 @@ import os
 import subprocess
 import sys
 
-from .classifier import build_request, parse_response
+from .evidence import EvidenceBudgetError, classify
 from .github import GitHub, fingerprint
-from .policy import MAX_STATE_BYTES, plan_labels, snapshot
+from .policy import MAX_SOURCE_BYTES, plan_labels, snapshot
 from .review import completed_review, review_identity
 from .taxonomy import LABELS
-from .transport import request_json
 
 
 def run(args):
@@ -23,27 +22,24 @@ def run(args):
         token = result.stdout.strip() if result.returncode == 0 else ""
     if not token:
         raise ValueError("Set GH_TOKEN/GITHUB_TOKEN or authenticate gh first.")
-    key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-    if not key:
-        raise ValueError("OPENROUTER_API_KEY is required.")
     github = GitHub(args.repo, token)
     pr = github.pull(args.pr)
     require_review = getattr(args, "require_greptile", False)
     review = None
     base_report = {"repository": args.repo, "pull_request": args.pr, "head_sha": pr["head"]["sha"]}
+    if pr["state"] != "open":
+        return {**base_report, "status": "skipped_closed"}
     if require_review:
-        if pr["state"] != "open":
-            return {**base_report, "status": "skipped_closed"}
         review = completed_review(github, pr, include_comments=False)
         if review is None:
             return {**base_report, "status": "waiting_for_greptile", "reason": "No completed Greptile review for the current head."}
-        # Even minimum filename/status/patch JSON cannot fit. This is an evidence
-        # capacity check, NEVER a semantic size classification.
-        minimum_file_bytes = len(json.dumps({"filename": "x", "status": "x", "patch": ""}))
-        if pr["changed_files"] * minimum_file_bytes > MAX_STATE_BYTES:
-            return {**base_report, "status": "blocked_evidence", "reason": "Repository-wide diff cannot fit complete evidence budget; review/rebase the PR rather than guess labels."}
     try:
-        state = snapshot(pr, github.files(args.pr))
+        base_sha = github.base_sha(pr)
+        files, provenance = github.compare_files(base_sha, pr["head"]["sha"])
+        base_report["evidence"] = provenance
+        if not files:
+            return {**base_report, "status": "skipped_no_changes"}
+        state = snapshot({**pr, "changed_files": len(files)}, files, max_bytes=MAX_SOURCE_BYTES)
         if require_review:
             review = completed_review(github, pr)
             if review is None:
@@ -53,24 +49,40 @@ def run(args):
         if not require_review:
             raise
         return {**base_report, "status": "blocked_evidence", "reason": str(exc)}
-    request = build_request(state)
-    if len(json.dumps(request).encode()) > 80_000:
-        raise ValueError("Request exceeds Jev context budget.")
-    if fingerprint(github.pull(args.pr)) != fingerprint(pr):
+    def unchanged():
+        return (fingerprint(github.pull(args.pr)) == fingerprint(pr)
+                and github.base_sha(pr) == base_sha)
+
+    if not unchanged():
         raise RuntimeError("PR changed while fetching evidence; retry against a fresh snapshot.")
-    response = request_json("https://openrouter.ai/api/alpha/decisions", key, "POST", request, limit=256_000)
-    decisions = parse_response(response, request, args.threshold)
+    key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    if not key:
+        raise ValueError("OPENROUTER_API_KEY is required.")
+    try:
+        decisions, inference = classify(state, key, args.threshold)
+    except EvidenceBudgetError as exc:
+        if not require_review:
+            raise
+        return {**base_report, "status": "blocked_evidence", "reason": str(exc)}
     current = {label["name"] for label in pr["labels"]}
     # Only the dedicated bot in Actions owns labels. Interactive runs never remove labels.
     actor = "github-actions[bot]" if os.environ.get("GITHUB_ACTIONS") == "true" else None
     owned = github.owned_labels(args.pr, actor) if actor else set()
     additions, removals = plan_labels(decisions, current, owned)
+    if inference.get("lossy"):
+        # Hierarchical evidence can support additions, never deletion of an
+        # existing conclusion using only a lossy reduction of the raw patches.
+        removals = []
+        for category in ("type", "size"):
+            if any(name.casefold().startswith(category + ": ") for name in current):
+                additions = [name for name in additions if not name.startswith(category + ": ")]
     report = {"repository": args.repo, "pull_request": args.pr, "head_sha": pr["head"]["sha"],
               "mode": "apply" if args.apply else "dry-run", "add": additions, "remove": removals,
               "review_check_id": None if review is None else review["id"],
-              "decisions": decisions, "model": response.get("model"), "usage": response.get("usage")}
+              "decisions": decisions, "model": inference.get("model"), "usage": inference.get("usage"),
+              "evidence": provenance, "inference": inference}
     if args.apply:
-        if fingerprint(github.pull(args.pr)) != fingerprint(pr):
+        if not unchanged():
             raise RuntimeError("PR changed during classification; no labels changed. Retry.")
         if args.ensure_labels:
             github.ensure_labels(LABELS)
@@ -78,7 +90,7 @@ def run(args):
         available = {label["name"].casefold() for label in github.pages("/labels")}
         if {label.casefold() for label in additions} - available:
             raise ValueError("Repository labels are missing. Rerun with --ensure-labels.")
-        if fingerprint(github.pull(args.pr)) != fingerprint(pr):
+        if not unchanged():
             raise RuntimeError("PR changed before label writes; retry against fresh evidence.")
         if actor and github.owned_labels(args.pr, actor) != owned:
             raise RuntimeError("Label ownership changed; stopped to preserve manual edits.")

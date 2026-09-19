@@ -104,8 +104,21 @@ opt-out, not enabled in Jcode.
 
 ## Decision and update policy
 
-- One request asks independent typed questions about the title, description,
-  filenames, and complete textual patches. All PR content is untrusted evidence.
+- The base branch is resolved through its live Git ref. Evidence comes from a
+  comparison of that immutable base SHA with the PR head SHA, not potentially
+  stale PR `base.sha`, file counts, or file-list caches. Reports include the base,
+  head, and merge-base SHAs used.
+- Small diffs use one typed decision request. Larger complete diffs are partitioned
+  into bounded excerpts, all classified by Jev, then reduced into semantic labels.
+  This reduction is explicitly **lossy**, even though every substantive patch is
+  covered. Ambiguous answers abstain, and hierarchical runs are add-only.
+  Size is never calculated from bytes, files, lines, or excerpt count.
+- Hierarchical primary type needs affirmative excerpt support. A semantic size
+  estimate requires decisive size assessments for every excerpt and a decisive
+  reducer, otherwise it abstains. Confidence cannot exceed the least-confident
+  contributing size assessment. This bound is not a calibrated probability of
+  global correctness. The reducer must abstain when interactions are unclear.
+- All PR content and intermediate decisions remain untrusted evidence.
 - Answers must match the fixed schema, allowed choices, finite probabilities,
   a normalized distribution, and a maximum-probability choice. Invalid responses
   fail before any label changes.
@@ -120,7 +133,9 @@ opt-out, not enabled in Jcode.
   `blocked`, and `ready-to-merge` are manual, never proposed by Jev. Readiness means
   the current revision is reviewer-approved, required checks pass, and no blockers
   remain. Reviewers must remove/reassess readiness when new commits arrive.
-- The head SHA, base SHA, title, body, state, and labels are rechecked before writes.
+- The head SHA, PR base ref/metadata, live base SHA, title, body, state, and labels
+  are rechecked before inference and writes. A moving base aborts rather than
+  labeling against an obsolete comparison.
   Ownership is rechecked before removals, but GitHub has no atomic compare-and-swap
   label API: an edit during the final API writes can still race. Human-label
   preservation is best-effort, not an absolute concurrency guarantee. Writes are incremental, not a destructive replace-all.
@@ -139,10 +154,14 @@ not echo patches, descriptions, or keys. Raw HTTP error bodies are never logged.
 
 Lockfile/generated/vendor patches are omitted as incidental evidence while their
 filenames remain visible. This is not a security audit or dependency vulnerability
-scanner. For all other files, missing or truncated patches fail closed. Oversized
-PRs beyond the 40 KB serialized evidence budget require manual classification,
-**not a fabricated XL label**. Line counts are used only to detect patch truncation,
-never as model inputs or size thresholds. Binary changes and text-free renames without patches also require manual review. The API fetch is paginated and bounded.
+scanner. For all other files, missing or truncated patches fail closed. Evidence
+is bounded to 2 MB serialized source, 64 excerpts, and 40 KB of state per model
+request. Reduction metadata must also fit the bounded request. The GitHub compare
+API caps its complete file list at 300, so comparisons reaching that boundary are
+rejected rather than assumed complete. Unsupported inputs require manual
+classification, **not a fabricated XL label**. Line counts are used only to detect
+patch truncation, never as model inputs or size thresholds. Binary changes and
+text-free renames without patches also require manual review. API reads are bounded.
 
 Model classifications can be wrong or influenced by malicious PR content even
 with instruction isolation. Labels must not authorize merges, deployments,

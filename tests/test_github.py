@@ -75,3 +75,45 @@ class GitHubTests(unittest.TestCase):
         self.client.request.side_effect = [{'check_runs': [{}] * 100}, {'check_runs': []}]
         self.assertEqual(len(self.client.pages('/commits/sha/check-runs?filter=latest', key='check_runs')), 100)
         self.client.request.assert_called_with('/commits/sha/check-runs?filter=latest&per_page=100&page=2')
+
+    def test_base_ref_exact_and_encoded(self):
+        self.client.request.return_value = {'ref': 'refs/heads/release/stable',
+                                            'object': {'type': 'commit', 'sha': 'b'*40}}
+        self.assertEqual(self.client.base_sha({'base': {'ref': 'release/stable'}}), 'b'*40)
+        self.client.request.assert_called_once_with('/git/ref/heads/release%2Fstable')
+
+    def test_base_ref_malformed_or_wrong_ref_rejected(self):
+        for result in [{'ref': 'refs/heads/other', 'object': {'type': 'commit', 'sha': 'b'*40}},
+                       {'ref': 'refs/heads/main', 'object': {'type': 'tag', 'sha': 'b'*40}},
+                       {'ref': 'refs/heads/main', 'object': {'type': 'commit', 'sha': '../bad'}}]:
+            self.client.request.return_value = result
+            with self.assertRaises(ValueError):
+                self.client.base_sha({'base': {'ref': 'main'}})
+
+    def comparison(self, files):
+        return {'base_commit': {'sha': 'b'*40}, 'merge_base_commit': {'sha': 'c'*40},
+                'status': 'diverged', 'ahead_by': 2, 'behind_by': 1914,
+                'commits': [{'sha': 'not-the-last-commit'}], 'files': files}
+
+    def test_pinned_compare_all_files_independent_of_commit_page(self):
+        self.client.request.return_value = self.comparison([{'filename': 'a.py'}])
+        files, source = self.client.compare_files('b'*40, 'a'*40)
+        self.assertEqual(files, [{'filename': 'a.py'}])
+        self.assertEqual(source['merge_base_sha'], 'c'*40)
+        self.client.request.assert_called_once_with(f"/compare/{'b'*40}...{'a'*40}?per_page=1&page=1")
+
+    def test_compare_rejects_cap_duplicates_missing_and_wrong_base(self):
+        cases = [self.comparison([{'filename': str(n)} for n in range(300)]),
+                 self.comparison([{'filename': 'a'}, {'filename': 'a'}]),
+                 self.comparison(None),
+                 {**self.comparison([]), 'base_commit': {'sha': 'd'*40}}]
+        for result in cases:
+            self.client.request.return_value = result
+            with self.assertRaises(ValueError):
+                self.client.compare_files('b'*40, 'a'*40)
+
+    def test_compare_sha_injection_rejected_without_network(self):
+        for sha in ('main', '../x', 'a'*40 + '?query', 'a'*40 + '\n'):
+            with self.assertRaises(ValueError):
+                self.client.compare_files('b'*40, sha)
+        self.client.request.assert_not_called()

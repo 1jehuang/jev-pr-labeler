@@ -3,6 +3,7 @@ import json
 from pathlib import PurePosixPath
 
 MAX_STATE_BYTES = 40_000
+MAX_SOURCE_BYTES = 2_000_000
 
 
 def incidental(path):
@@ -14,7 +15,7 @@ def incidental(path):
             or name.endswith((".min.js", ".min.css", ".generated.rs", ".generated.ts")))
 
 
-def snapshot(pr, files):
+def snapshot(pr, files, max_bytes=MAX_STATE_BYTES):
     if pr["state"] != "open":
         raise ValueError("PR is not open; no classification performed.")
     if len(files) != pr["changed_files"]:
@@ -36,7 +37,7 @@ def snapshot(pr, files):
                     raise ValueError("GitHub returned a truncated patch; manual labeling required.")
             item["patch"] = patch or "No textual content changed (rename, mode change, or binary metadata)."
         state["files"].append(item)
-    if len(json.dumps(state, ensure_ascii=True).encode()) > MAX_STATE_BYTES:
+    if len(json.dumps(state, ensure_ascii=True).encode()) > max_bytes:
         raise ValueError("PR exceeds bounded model context; manual labeling required, not a size guess.")
     return state
 

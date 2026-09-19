@@ -1,5 +1,9 @@
 # Greptile-ordered labeling and readiness
 
+> Historical acceptance record. The blocked-backlog observations below predate
+> the live-base evidence fix. See [backfill remediation](BACKFILL_REMEDIATION.md)
+> for the stale-base diagnosis and subsequent deployment/readback evidence.
+
 The requested sequence is **Greptile finishes → Jev classifies → reviewer decides
 whether to mark ready-to-merge**. Jev receives the complete supported diff plus
 verified current-review findings. Completion does not imply approval.

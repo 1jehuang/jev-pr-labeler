@@ -36,6 +36,50 @@ class GitHub:
     def files(self, number):
         return self.pages(f"/pulls/{number}/files")
 
+    def base_sha(self, pr):
+        """PR base.sha/file statistics can remain stale after base history changes."""
+        ref = pr["base"]["ref"]
+        if not isinstance(ref, str) or not ref or len(ref) > 1024:
+            raise ValueError("Invalid base branch name.")
+        result = self.request(f"/git/ref/heads/{quote(ref, safe='')}")
+        if not isinstance(result, dict) or not isinstance(result.get("object"), dict):
+            raise ValueError("Invalid base branch response.")
+        sha = result["object"].get("sha")
+        if (result.get("ref") != f"refs/heads/{ref}"
+                or result["object"].get("type") != "commit"
+                or not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha)):
+            raise ValueError("Base branch did not resolve to an exact commit ref.")
+        return sha
+
+    def compare_files(self, base_sha, head_sha):
+        for sha in (base_sha, head_sha):
+            if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+                raise ValueError("Comparison requires immutable commit SHAs.")
+        # Files are on page 1 regardless of commit pagination. GitHub caps the
+        # COMPLETE comparison at 300 files; reject the boundary, never paginate
+        # commits in the mistaken belief that it retrieves more files.
+        result = self.request(f"/compare/{base_sha}...{head_sha}?per_page=1&page=1")
+        if (not isinstance(result, dict)
+                or not isinstance(result.get("base_commit"), dict)
+                or not isinstance(result.get("merge_base_commit"), dict)):
+            raise ValueError("Invalid immutable comparison response.")
+        files = result.get("files")
+        merge_base = result.get("merge_base_commit", {}).get("sha")
+        if (result.get("base_commit", {}).get("sha") != base_sha
+                or result.get("status") not in {"ahead", "behind", "diverged", "identical"}
+                or not isinstance(merge_base, str)
+                or not re.fullmatch(r"[0-9a-f]{40}", merge_base)
+                or not isinstance(files, list)):
+            raise ValueError("Invalid immutable comparison evidence.")
+        if len(files) >= 300:
+            raise ValueError("GitHub comparison file cap reached; refusing partial evidence.")
+        names = [file.get("filename") for file in files if isinstance(file, dict)]
+        if len(names) != len(files) or any(not isinstance(n, str) or not n for n in names) or len(set(names)) != len(names):
+            raise ValueError("Invalid or duplicate comparison file evidence.")
+        return files, {"source": "github_immutable_compare", "base_sha": base_sha,
+                       "head_sha": head_sha, "merge_base_sha": merge_base,
+                       "changed_files": len(files)}
+
     def owned_labels(self, number, actor):
         # The latest event for a current label records who last applied it.
         owners = {}
@@ -74,4 +118,5 @@ class GitHub:
 
 def fingerprint(pr):
     return (pr["head"]["sha"], pr["base"]["sha"], pr["title"], pr.get("body"),
-            pr["state"], tuple(sorted(label["name"] for label in pr["labels"])))
+            pr["base"].get("ref"), pr["state"],
+            tuple(sorted(label["name"] for label in pr["labels"])))

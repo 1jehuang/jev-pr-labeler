@@ -1,7 +1,7 @@
 """GitHub metadata only: no cloning, PR code execution, or PR-controlled URLs."""
 import re
 from urllib.parse import quote
-from .transport import request_json
+from .transport import APIError, request_json
 
 
 class GitHub:
@@ -38,6 +38,9 @@ class GitHub:
         owners = {}
         for event in self.pages(f"/issues/{number}/events"):
             name = (event.get("label") or {}).get("name")
+            if not isinstance(name, str):
+                continue
+            name = name.casefold()
             if event.get("event") == "labeled":
                 owners[name] = (event.get("actor") or {}).get("login")
             elif event.get("event") == "unlabeled":
@@ -48,12 +51,21 @@ class GitHub:
         existing = {item["name"].casefold() for item in self.pages("/labels")}
         for name, properties in labels.items():
             if name.casefold() not in existing:
-                self.request("/labels", "POST", {"name": name, **properties})
+                try:
+                    self.request("/labels", "POST", {"name": name, **properties})
+                except APIError as exc:
+                    # Another PR workflow may provision the same repository label.
+                    if exc.status != 422 or name.casefold() not in {
+                        item["name"].casefold() for item in self.pages("/labels")
+                    }:
+                        raise
 
-    def apply(self, number, additions, removals):
+    def apply(self, number, additions, removals, actor=None):
         if additions:
             self.request(f"/issues/{number}/labels", "POST", {"labels": sorted(additions)})
         for label in sorted(removals):
+            if actor and label.casefold() not in {name.casefold() for name in self.owned_labels(number, actor)}:
+                raise RuntimeError("Label ownership changed before removal; stopped to preserve manual edits.")
             self.request(f"/issues/{number}/labels/{quote(label, safe='')}", "DELETE")
 
 

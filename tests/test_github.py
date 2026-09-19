@@ -40,7 +40,7 @@ class GitHubTests(unittest.TestCase):
         self.client.request.return_value = [event('labeled', 'github-actions[bot]'), event('unlabeled', 'human'), event('labeled', 'human')]
         self.assertEqual(self.client.owned_labels(1, 'github-actions[bot]'), set())
         self.client.request.return_value.append(event('labeled', 'github-actions[bot]'))
-        self.assertEqual(self.client.owned_labels(1, 'github-actions[bot]'), {'size: S'})
+        self.assertEqual(self.client.owned_labels(1, 'github-actions[bot]'), {'size: s'})
 
     def test_removal_path_is_encoded(self):
         self.client.apply(1, [], ['area: tui'])
@@ -52,3 +52,21 @@ class GitHubTests(unittest.TestCase):
                                    'size: M': {'color': 'ffffff', 'description': 'new'}})
         self.assertEqual(self.client.request.call_count, 2)
         self.client.request.assert_called_with('/labels', 'POST', {'name': 'size: M', 'color': 'ffffff', 'description': 'new'})
+
+    def test_label_provision_race_refetches_existing(self):
+        from jev_labeler.transport import APIError
+        self.client.request.side_effect = [[], APIError(422), [{'name': 'size: S'}]]
+        self.client.ensure_labels({'size: S': {'color': 'ffffff', 'description': 'new'}})
+        self.assertEqual(self.client.request.call_count, 3)
+
+    def test_unrelated_provision_failure_not_hidden(self):
+        from jev_labeler.transport import APIError
+        self.client.request.side_effect = [[], APIError(422), []]
+        with self.assertRaises(APIError):
+            self.client.ensure_labels({'size: S': {'color': 'ffffff', 'description': 'new'}})
+
+    def test_human_reapply_prevents_removal(self):
+        self.client.owned_labels = Mock(return_value=set())
+        with self.assertRaisesRegex(RuntimeError, 'ownership changed'):
+            self.client.apply(1, [], ['size: S'], actor='github-actions[bot]')
+        self.client.request.assert_not_called()

@@ -46,7 +46,8 @@ class ClassifierTests(unittest.TestCase):
             "size": "XS S M L XL".split(),
         }
         self.assertEqual(set(LABELS), {
-            f"{category}: {name}" for category, names in expected.items() for name in names
+            (name if category == "attention" else f"{category}: {name}")
+            for category, names in expected.items() for name in names
         })
         self.assertEqual(len(LABELS), 26)
         for metadata in LABELS.values():
@@ -121,11 +122,11 @@ class ClassifierTests(unittest.TestCase):
             self.select(key, "no")
             result = parse_response(self.response, self.request)[key]
             self.assertEqual(result["labels"], [])
-            self.assertEqual(result["decisive"], not key.startswith("attention:"))
+            self.assertEqual(result["decisive"], key not in {"security", "breaking-change"})
 
     def test_manual_labels_never_asked_or_proposed(self):
         result = parse_response(response_for(self.request, "yes"), self.request)
-        for label in ("attention: needs-tests", "attention: blocked"):
+        for label in ("needs-tests", "blocked"):
             self.assertNotIn(label, self.request["questions"])
             self.assertFalse(any(label in answer["labels"] for answer in result.values()))
 
@@ -232,7 +233,7 @@ class ClassifierTests(unittest.TestCase):
         for mutation in ("question", "manual", "choice", "type", "criteria"):
             request = copy.deepcopy(self.request)
             if mutation in ("question", "manual"):
-                name = "pwned" if mutation == "question" else "attention: blocked"
+                name = "pwned" if mutation == "question" else "blocked"
                 request["questions"][name] = request["questions"]["area: tui"]
             elif mutation == "choice":
                 request["questions"]["type"]["criteria"]["pwned"] = "injected"

@@ -78,8 +78,9 @@ GitHub credentials go only to GitHub. Redirects are refused.
 - `security` and `breaking-change` are never automatically removed. `needs-tests`
   and `blocked` are manual, not guessed from a patch.
 - The head SHA, base SHA, title, body, state, and labels are rechecked before writes.
-  GitHub has no atomic compare-and-swap label API: an edit during the final API
-  writes can still race. Writes are incremental, not a destructive replace-all.
+  Ownership is rechecked before removals, but GitHub has no atomic compare-and-swap
+  label API: an edit during the final API writes can still race. Human-label
+  preservation is best-effort, not an absolute concurrency guarantee. Writes are incremental, not a destructive replace-all.
 - HTTP errors can leave a partial label update. The command fails, rather than
   claiming success; rerunning reconciles the next fresh snapshot.
 - One PR's workflow runs are serialized. New commits trigger another run.
@@ -95,8 +96,7 @@ filenames remain visible. This is not a security audit or dependency vulnerabili
 scanner. For all other files, missing or truncated patches fail closed. Oversized
 PRs beyond the 40 KB serialized evidence budget require manual classification,
 **not a fabricated XL label**. Line counts are used only to detect patch truncation,
-never as model inputs or size thresholds. Text-free renames can be classified
-from their metadata. The API fetch is paginated and bounded.
+never as model inputs or size thresholds. Binary changes and text-free renames without patches also require manual review. The API fetch is paginated and bounded.
 
 Model classifications can be wrong or influenced by malicious PR content even
 with instruction isolation. Labels must not authorize merges, deployments,

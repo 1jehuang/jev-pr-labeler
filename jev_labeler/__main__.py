@@ -37,7 +37,8 @@ def run(args):
     decisions = parse_response(response, request, args.threshold)
     current = {label["name"] for label in pr["labels"]}
     # Only the dedicated bot in Actions owns labels. Interactive runs never remove labels.
-    owned = github.owned_labels(args.pr, "github-actions[bot]") if os.environ.get("GITHUB_ACTIONS") == "true" else set()
+    actor = "github-actions[bot]" if os.environ.get("GITHUB_ACTIONS") == "true" else None
+    owned = github.owned_labels(args.pr, actor) if actor else set()
     additions, removals = plan_labels(decisions, current, owned)
     report = {"repository": args.repo, "pull_request": args.pr, "head_sha": pr["head"]["sha"],
               "mode": "apply" if args.apply else "dry-run", "add": additions, "remove": removals,
@@ -48,12 +49,16 @@ def run(args):
         if args.ensure_labels:
             github.ensure_labels(LABELS)
         # Preflight the schema so a typo/missing label cannot partially apply.
-        available = {label["name"] for label in github.pages("/labels")}
-        if set(additions) - available:
+        available = {label["name"].casefold() for label in github.pages("/labels")}
+        if {label.casefold() for label in additions} - available:
             raise ValueError("Repository labels are missing. Rerun with --ensure-labels.")
-        github.apply(args.pr, additions, removals)
-        actual = {label["name"] for label in github.pull(args.pr)["labels"]}
-        if not set(additions).issubset(actual) or set(removals) & actual:
+        if fingerprint(github.pull(args.pr)) != fingerprint(pr):
+            raise RuntimeError("PR changed before label writes; retry against fresh evidence.")
+        if actor and github.owned_labels(args.pr, actor) != owned:
+            raise RuntimeError("Label ownership changed; stopped to preserve manual edits.")
+        github.apply(args.pr, additions, removals, actor=actor)
+        actual = {label["name"].casefold() for label in github.pull(args.pr)["labels"]}
+        if not {label.casefold() for label in additions}.issubset(actual) or {label.casefold() for label in removals} & actual:
             raise RuntimeError("GitHub label readback differed. Inspect the PR before retrying.")
         report["verified"] = True
     return report

@@ -43,7 +43,7 @@ class FakeGitHub:
     def ensure_labels(self, labels):
         self.writes.append('ensure')
 
-    def apply(self, number, additions, removals):
+    def apply(self, number, additions, removals, actor=None):
         self.writes.append((additions, removals))
         names = {x['name'] for x in self.pr['labels']} | set(additions)
         names -= set(removals)
@@ -72,7 +72,7 @@ class CLITests(unittest.TestCase):
 
     def test_stale_snapshot_no_writes(self):
         self.args.apply = True
-        for stage in [2, 3]:
+        for stage in [2, 3, 4]:
             self.github = FakeGitHub()
             self.github.stale_at = stage
             with self.assertRaisesRegex(RuntimeError, 'PR changed'):
@@ -86,6 +86,11 @@ class CLITests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'Threshold'):
                     run(self.args)
                 client.assert_not_called()
+
+    def test_case_insensitive_existing_schema(self):
+        self.args.apply = True
+        self.github.pages = lambda _: [{'name': n} for n in ['Type: Bug', 'SIZE: S', 'Area: Config']]
+        self.assertTrue(self.invoke()['verified'])
 
     def test_missing_schema_no_writes(self):
         self.args.apply = True

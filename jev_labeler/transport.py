@@ -4,6 +4,12 @@ from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
+class APIError(RuntimeError):
+    def __init__(self, status):
+        self.status = status
+        super().__init__(f"API request failed: HTTP {status}. No labels should be assumed updated.")
+
+
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -18,7 +24,9 @@ def request_json(url, token, method="GET", body=None, limit=8 * 1024 * 1024):
         with build_opener(NoRedirect).open(request, timeout=45) as response:
             raw = response.read(limit + 1)
     except HTTPError as exc:
-        raise RuntimeError(f"API request failed: HTTP {exc.code}. No labels should be assumed updated.") from None
+        status = exc.code
+        exc.close()
+        raise APIError(status) from None
     except (URLError, TimeoutError, OSError):
         raise RuntimeError("API connection failed or timed out.") from None
     if len(raw) > limit:

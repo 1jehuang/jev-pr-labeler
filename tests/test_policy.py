@@ -14,6 +14,13 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(add, ['size: M', 'type: feature'])
         self.assertEqual(remove, ['size: S', 'type: bug'])
 
+    def test_case_insensitive_human_group(self):
+        self.assertEqual(plan_labels({'type': decision(['type: bug'])}, {'Type: docs'}, set()), ([], []))
+
+    def test_case_insensitive_presence_and_owned_removal(self):
+        self.assertEqual(plan_labels({'size': decision(['size: S'])}, {'SIZE: S'}, {'size: s'}), ([], []))
+        self.assertEqual(plan_labels({'size': decision(['size: M'])}, {'SIZE: S'}, {'size: s'}), (['size: M'], ['SIZE: S']))
+
     def test_human_choices_win(self):
         self.assertEqual(plan_labels({'size': decision(['size: M'])}, {'size: S'}, set()), ([], []))
 
@@ -83,4 +90,10 @@ class SnapshotTests(unittest.TestCase):
     def test_closed_pr_not_classified(self):
         self.pr['state'] = 'closed'
         with self.assertRaisesRegex(ValueError, 'not open'):
+            snapshot(self.pr, [self.file])
+
+    def test_binary_with_zero_line_counts_is_not_safe_to_guess(self):
+        self.file.update(filename='icon.png', additions=0, deletions=0)
+        self.file.pop('patch')
+        with self.assertRaisesRegex(ValueError, 'unavailable'):
             snapshot(self.pr, [self.file])

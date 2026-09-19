@@ -26,7 +26,7 @@ def snapshot(pr, files):
             item["note"] = "Lockfile/generated/vendor patch omitted; do not infer large scope from its volume."
         else:
             patch = file.get("patch")
-            if not patch and (file.get("additions", 0) or file.get("deletions", 0)):
+            if not patch:
                 raise ValueError("A substantive patch is unavailable (binary/large diff); manual labeling required.")
             # GitHub can silently truncate a patch. Hunk headers/context do not count.
             if patch:
@@ -42,20 +42,23 @@ def snapshot(pr, files):
 
 
 def plan_labels(decisions, current, owned):
-    """Replace only this bot's labels. Human-applied exclusive labels win."""
+    """GitHub label identity is case-insensitive. Preserve actual removal names."""
+    current_names = {label.casefold(): label for label in current}
+    owned_ids = {label.casefold() for label in owned}
     additions, removals = set(), set()
     for question, decision in decisions.items():
         if not decision["decisive"]:
             continue
-        desired = set(decision["labels"])
+        desired = {label.casefold(): label for label in decision["labels"]}
         if question in {"type", "size"}:
-            group = {label for label in current if label.startswith(question + ": ")}
-            if group - owned:
+            group = {label for label in current_names if label.startswith(question + ": ")}
+            if group - owned_ids:
                 continue
-            additions.update(desired - current)
-            removals.update((group & owned) - desired)
+            additions.update(name for key, name in desired.items() if key not in current_names)
+            removals.update(current_names[key] for key in (group & owned_ids) - desired.keys())
         else:
-            additions.update(desired - current)
-            if question not in {"security", "breaking-change"} and not desired and question in owned:
-                removals.add(question)
+            additions.update(name for key, name in desired.items() if key not in current_names)
+            key = question.casefold()
+            if key not in {"security", "breaking-change"} and not desired and key in owned_ids and key in current_names:
+                removals.add(current_names[key])
     return sorted(additions), sorted(removals)

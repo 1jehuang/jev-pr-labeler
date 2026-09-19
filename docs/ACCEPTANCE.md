@@ -11,8 +11,9 @@ PRs with the agreed taxonomy. **Size is semantic scope, not changed-line counts.
 The later operating request requires the labeling to run automatically for Jcode.
 
 Initial uncertainty concerned locating Jev's actual API. Before implementation,
-its existing Jcode integration and a real OpenRouter Decisions request established
-that it is a typed classifier, not a chat/completions model. No alternate model
+its existing Jcode integration and documentation established that it is a typed
+classifier, not a chat/completions model. An early live Decisions request then
+confirmed the implemented protocol. No alternate model
 or heuristic line-count labeler was deployed. The earlier line-count descriptions
 were replaced with semantic definitions before this implementation began.
 

@@ -76,3 +76,43 @@ pending Greptile runs. The deployed concurrency is job-scoped after the trusted-
 condition and also includes app identity in its group. The complete supported
 workflow is verified; universal model accuracy and successful labeling of the
 blocked historical backlog are not claimed.
+
+## Public-interface backfill acceptance recheck
+
+The backlog was subsequently tested through the **installed package**, not a direct
+call to an internal dispatcher or a copied source harness. A fresh virtualenv's
+`site-packages/jev_labeler` was confirmed as the imported module, with working
+directory outside the source tree. Actual command:
+
+```bash
+python -m jev_labeler.after_review --repo 1jehuang/jcode --all-open --apply
+```
+
+| Acceptance path | Observed result |
+| --- | --- |
+| Complete real open-PR inventory | CLI returned exactly one outcome for each of the 25 open PRs independently enumerated through GitHub's API |
+| Historical backlog classification | 20 `blocked_evidence`, 5 `waiting_for_greptile`, zero newly labeled PRs; process exited 0 because these are explicit deferred outcomes, not transport errors |
+| No unintended changes | Independent GitHub label snapshots before and after were identical for every open PR |
+| Deployed oversized-PR path | [Hosted run on actual #1295](https://github.com/1jehuang/jcode/actions/runs/35413827819) returned `blocked_evidence` after validating its completed review, with no model guesses or label writes |
+| Deployed missing-review path | [Hosted run on actual #1276](https://github.com/1jehuang/jcode/actions/runs/35413332261) returned `waiting_for_greptile` |
+| Real empty repository backlog | Installed CLI against this repository, whose acceptance PRs are closed, returned zero targets/results and success |
+| Closed PR by number | Installed CLI on closed #1309 returned `skipped_closed` |
+| Closed PR by historical head | Installed CLI using #1309's exact head SHA returned zero matching open PRs |
+| Invalid selector | Installed CLI with a non-SHA path-like selector exited 1 with a sanitized error |
+| Exact public taxonomy | Fresh GitHub API comparison found all 27 names; all three manual labels are absent from the model question schema |
+
+The historical backfill has **not** achieved automatic label coverage: the observed
+result remains 0/25. This is not a GitHub connectivity or credential failure. It
+combines real input diffs far beyond the model's supported complete-evidence
+context with an implementation policy that does not summarize/truncate them, plus
+missing third-party reviews. Increasing a small byte limit alone would not make
+those repository-wide code diffs fit the model context. Multi-stage large-PR
+classification or repairing/recreating those branches is additional work, not an
+outcome delivered here. Contributor branches have not been rewritten.
+
+The original labeler goal, in contrast, has direct positive outcome evidence:
+a real eligible PR acquired correct semantic labels automatically twelve seconds
+after actual Greptile completion, with no manual labeling command. The package,
+CLI reports, taxonomy, deployed action, secrets boundary, event routing, readiness
+exclusion, and deferred outcomes each have a concrete check above or in the
+historical acceptance map. Test counts alone are not the basis for completion.

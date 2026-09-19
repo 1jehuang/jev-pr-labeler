@@ -1,0 +1,28 @@
+name: Live action smoke test
+on:
+  workflow_dispatch:
+    inputs:
+      pull-request:
+        description: Existing open PR number in this repository (will be labeled)
+        required: true
+        type: string
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+concurrency:
+  group: jev-smoke-${{ inputs.pull-request }}
+  cancel-in-progress: false
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # No checkout. Only immutable action code runs with credentials.
+      - uses: 1jehuang/jev-pr-labeler@07e219fcdcfd5b94463f492760e33e5f0baa99c2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          openrouter-api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          repository: ${{ github.repository }}
+          pull-request: ${{ inputs.pull-request }}
+          apply: 'true'

@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jev-pr-labeler"
+version = "0.1.0"
+description = "Semantic GitHub PR labels using Jev's typed decisions"
+requires-python = ">=3.11"
+license = "MIT"
+
+[project.scripts]
+jev-pr-labeler = "jev_labeler.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["jev_labeler*"]

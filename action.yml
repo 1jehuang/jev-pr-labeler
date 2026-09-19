@@ -1,0 +1,41 @@
+name: Jev PR Labeler
+description: Classify PR type, area, platform, and semantic scope with Jev.
+inputs:
+  github-token:
+    description: GitHub token with pull-requests write and issues read/write permissions
+    required: true
+  openrouter-api-key:
+    description: OpenRouter API key authorized to use Jev
+    required: true
+  repository:
+    description: GitHub owner/repository
+    required: true
+  pull-request:
+    description: Positive PR number
+    required: true
+  apply:
+    description: Set to true to apply labels. Default is dry-run.
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Classify PR using trusted action code only
+      shell: bash
+      env:
+        PYTHONPATH: ${{ github.action_path }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        OPENROUTER_API_KEY: ${{ inputs.openrouter-api-key }}
+        LABEL_REPOSITORY: ${{ inputs.repository }}
+        LABEL_PR: ${{ inputs.pull-request }}
+        LABEL_APPLY: ${{ inputs.apply }}
+      run: |
+        cd "$GITHUB_ACTION_PATH"
+        args=(--repo "$LABEL_REPOSITORY" --pr "$LABEL_PR")
+        if [[ "$LABEL_APPLY" == "true" ]]; then
+          args+=(--apply --ensure-labels)
+        elif [[ "$LABEL_APPLY" != "false" ]]; then
+          echo 'apply must be true or false' >&2
+          exit 1
+        fi
+        python3 -m jev_labeler "${args[@]}"

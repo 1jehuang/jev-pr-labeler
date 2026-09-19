@@ -6,7 +6,7 @@ TypeSafe's typed decision model, through OpenRouter's Decisions API.
 **Size means conceptual scope, not lines changed.** A small protocol change can
 have broader scope than a large mechanical rename.
 
-## Labels
+## Label taxonomy
 
 | Group | Labels |
 | --- | --- |

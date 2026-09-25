@@ -5,8 +5,9 @@ inputs:
     description: GitHub token with checks read and pull-requests/issues write permissions
     required: true
   openrouter-api-key:
-    description: OpenRouter API key authorized to use Jev
-    required: true
+    description: OpenRouter API key authorized to use Jev. When empty, the action skips labeling and succeeds.
+    required: false
+    default: ''
   repository:
     description: GitHub owner/repository
     required: true
@@ -39,6 +40,12 @@ runs:
         LABEL_APPLY: ${{ inputs.apply }}
       run: |
         cd "$GITHUB_ACTION_PATH"
+        # Forks and repositories without the secret cannot label anything. Skip
+        # instead of failing so a missing key never becomes a permanently red check.
+        if [[ -z "${OPENROUTER_API_KEY//[[:space:]]/}" ]]; then
+          echo '::notice title=Jev PR Labeler::OPENROUTER_API_KEY is not configured; skipping labeling.'
+          exit 0
+        fi
         args=(--repo "$LABEL_REPOSITORY")
         if [[ -n "$LABEL_PR" && -z "$LABEL_CHECK_SHA" ]]; then
           args+=(--pr "$LABEL_PR")

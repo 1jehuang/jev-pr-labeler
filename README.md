@@ -49,6 +49,7 @@ The optional package entry point is `jev-pr-labeler` after `pip install .`.
 
 1. Review this action and pin it to a **full commit SHA**.
 2. Add an `OPENROUTER_API_KEY` repository secret. Use a dedicated, spend-capped key.
+   Without it (for example on forks) the action logs a notice and succeeds without labeling.
 3. Copy [`examples/label-pr.yml`](examples/label-pr.yml) into the target repository's
    `.github/workflows/label-pr.yml`, replacing the action SHA placeholder.
 4. Merge the workflow onto the default branch. Jev runs after Greptile completes a review of the current PR head.

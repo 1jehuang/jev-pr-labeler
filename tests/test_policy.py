@@ -77,6 +77,19 @@ class SnapshotTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'truncated'):
             snapshot(self.pr, [self.file])
 
+    def test_only_lf_delimits_patch_lines(self):
+        for separator in ('\r', '\v', '\f', '\x1c', '\x1d', '\x1e', '\x85', '\u2028', '\u2029'):
+            with self.subTest(separator=repr(separator)):
+                self.file['patch'] = f'@@ -1 +1 @@\n-old{separator}-text\n+new{separator}+text'
+                state = snapshot(self.pr, [self.file])
+                self.assertEqual(state['files'][0]['patch'], self.file['patch'])
+
+    def test_embedded_separators_cannot_supply_missing_diff_lines(self):
+        self.file.update(additions=2, deletions=2,
+                         patch='@@ -1,2 +1,2 @@\n-old\u2028-text\n+new\u2028+text')
+        with self.assertRaisesRegex(ValueError, 'truncated'):
+            snapshot(self.pr, [self.file])
+
     def test_complete_list_required(self):
         self.pr['changed_files'] = 2
         with self.assertRaisesRegex(ValueError, 'Incomplete'):

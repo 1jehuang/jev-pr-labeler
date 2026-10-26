@@ -1,9 +1,13 @@
 import argparse
 import copy
+import os
+import sys
 import unittest
 from unittest.mock import patch
-from jev_labeler.__main__ import run
+from jev_labeler.__main__ import error_message, run
 from jev_labeler.classifier import build_request
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
 def response():
@@ -112,6 +116,41 @@ class CLITests(unittest.TestCase):
             self.invoke()
         self.assertEqual(self.github.writes, [])
 
+    def test_ensure_labels_provisions_before_preflight(self):
+        self.args.apply = True
+        self.args.ensure_labels = True
+        self.assertTrue(self.invoke()['verified'])
+        self.assertEqual(self.github.writes[0], 'ensure')
+        self.assertEqual(len(self.github.writes), 2)
+
+    def test_ensure_labels_missing_schema_still_skips_label_writes(self):
+        self.args.apply = True
+        self.args.ensure_labels = True
+        self.github.pages = lambda _: []
+        with self.assertRaisesRegex(ValueError, 'labels are missing'):
+            self.invoke()
+        self.assertEqual(self.github.writes, ['ensure'])
+
+    def test_ownership_change_aborts_immediately_before_writing(self):
+        self.args.apply = True
+        seen = []
+        def owned_labels(*args):
+            seen.append(args)
+            return set() if len(seen) == 1 else {'type: bug'}
+        self.github.owned_labels = owned_labels
+        with patch.dict('os.environ', {'GITHUB_ACTIONS': 'true'}):
+            with self.assertRaisesRegex(RuntimeError, 'ownership changed'):
+                self.invoke()
+        self.assertEqual(len(seen), 2)
+        self.assertEqual(self.github.writes, [])
+
+    def test_label_readback_mismatch_is_an_error_not_a_success(self):
+        self.args.apply = True
+        self.github.apply = lambda *args, **kwargs: self.github.writes.append('apply')
+        with self.assertRaisesRegex(RuntimeError, 'readback differed'):
+            self.invoke()
+        self.assertEqual(self.github.writes, ['apply'])
+
     def test_invalid_model_response_no_writes(self):
         self.args.apply = True
         with patch('jev_labeler.__main__.GitHub', return_value=self.github), patch('jev_labeler.evidence.request_json', return_value={'answers': {}}):
@@ -205,3 +244,25 @@ class CLITests(unittest.TestCase):
         self.assertTrue(result['verified'])
         self.assertEqual({x['name'] for x in self.github.pr['labels']},
                          {'Type: Feature', 'SIZE: L', 'area: tui', 'area: config'})
+
+
+class ErrorMessageTests(unittest.TestCase):
+    """Diagnostics must name the real cause and never echo remote or credential data."""
+
+    def test_missing_credential_helper_is_named(self):
+        message = error_message(FileNotFoundError(2, 'No such file or directory', 'gh'))
+        self.assertIn('gh', message)
+        self.assertIn('GH_TOKEN', message)
+        self.assertNotIn('No such file or directory', message)
+
+    def test_network_errors_keep_the_generic_wording(self):
+        self.assertEqual(error_message(OSError('PRIVATE connection reset')),
+                         'Local credential helper or network operation failed.')
+
+    def test_unexpected_shapes_stay_generic(self):
+        self.assertEqual(error_message(KeyError('PRIVATE data')),
+                         'Unexpected API response shape; no classification can be trusted.')
+
+    def test_locally_authored_messages_pass_through(self):
+        self.assertEqual(error_message(RuntimeError('API connection failed or timed out.')),
+                         'API connection failed or timed out.')

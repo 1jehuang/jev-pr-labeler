@@ -33,7 +33,7 @@ Requires Python 3.11+, no runtime packages. Run from this repository:
 
 ```bash
 export OPENROUTER_API_KEY='your-key'  # Prefer your secret manager, never commit it.
-# Authenticate gh, or set GH_TOKEN/GITHUB_TOKEN.
+# Authenticate gh, or set GH_TOKEN/GITHUB_TOKEN. A missing gh is reported by name.
 python3 -m jev_labeler --repo owner/repo --pr 123
 # The command above is a dry-run. Explicitly apply with:
 python3 -m jev_labeler --repo owner/repo --pr 123 --apply --ensure-labels
@@ -41,7 +41,9 @@ python3 -m jev_labeler --repo owner/repo --pr 123 --apply --ensure-labels
 
 `--ensure-labels` creates missing taxonomy labels without altering existing colors
 or descriptions. Dry-run never writes to GitHub, but **does make a paid Jev call**.
-The report includes per-question choice/confidence and provider usage/cost.
+The report includes per-question choice/confidence and provider usage/cost; a
+`--all-open` batch also reports one aggregate usage total for the whole run,
+covering only the PRs that actually reported usage.
 Never put tokens in command-line arguments. `.env` is ignored but not auto-loaded.
 The optional package entry point is `jev-pr-labeler` after `pip install .`.
 
@@ -110,7 +112,11 @@ python3 -m jev_labeler.after_review --repo owner/repo --all-open
 
 Add `--apply --ensure-labels` only for deliberately user-owned labels.
 This emits an outcome for every open PR: labeled, `waiting_for_greptile`,
-`blocked_evidence`, or error. It never treats missing evidence as merge readiness.
+`blocked_evidence`, or error, plus `status: no_matching_open_prs` when a
+`--check-sha` head no longer matches an open PR (a visible no-op, exit 0). It
+never treats missing evidence as merge readiness.
+Expected per-PR failures are reported without discarding other PR outcomes. The
+batch exits nonzero if any PR errors; waiting or blocked evidence alone is not an error.
 For direct local classification with review context, use
 `python3 -m jev_labeler --repo owner/repo --pr 123 --require-greptile`. The original CLI can still be used
 without that flag for explicitly independent, diff-only use. The action defaults
@@ -166,12 +172,22 @@ opt-out, not enabled in Jcode.
 PR title, description, filenames, and patches are sent to OpenRouter/TypeSafe.
 Do not enable this on private code without approving that data flow. Reports do
 not echo patches, descriptions, or keys. Raw HTTP error bodies are never logged.
+Idempotent reads are retried at most twice with bounded backoff. `Retry-After`
+accepts seconds or an HTTP-date. A delay above the five-second per-wait budget,
+or one too large to read as a finite number, stops the request rather than
+retrying earlier than the server allows. Retries cover transient `429`/`5xx`, a
+`403` that is really throttling (`Retry-After`, or `X-RateLimit-Remaining: 0`),
+and a dropped connection or timeout before a response arrives. Exhausted retries
+fail with a sanitized error naming the status, and the throttling hint appears
+only for a real rate limit. Label writes and paid inference requests are never
+retried: a duplicate write or model call is worse than a visible failure.
 
 Lockfile/generated/vendor patches are omitted as incidental evidence while their
 filenames remain visible. This is not a security audit or dependency vulnerability
 scanner. For all other files, missing or truncated patches fail closed. Evidence
 is bounded to 2 MB serialized source, 64 excerpts, and 40 KB of state per model
-request. Reduction metadata must also fit the bounded request. The GitHub compare
+request, within an 80 KB serialized wire budget. Reduction metadata must also fit
+the bounded request. The GitHub compare
 API caps its complete file list at 300, so comparisons reaching that boundary are
 rejected rather than assumed complete. Unsupported inputs require manual
 classification, **not a fabricated XL label**. Line counts are used only to detect

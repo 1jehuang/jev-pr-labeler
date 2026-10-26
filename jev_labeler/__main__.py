@@ -13,9 +13,13 @@ from .review import completed_review, review_identity
 from .taxonomy import LABELS
 
 
-def run(args):
-    if not math.isfinite(args.threshold) or not 0 <= args.threshold <= 1:
+def validate_threshold(threshold):
+    if not math.isfinite(threshold) or not 0 <= threshold <= 1:
         raise ValueError("Threshold must be finite and between 0 and 1.")
+
+
+def run(args):
+    validate_threshold(args.threshold)
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if not token:
         result = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True)
@@ -104,6 +108,17 @@ def run(args):
     return report
 
 
+def error_message(exc):
+    # Do not print raw model/PR/HTTP data. Other exception strings are authored locally.
+    if isinstance(exc, (KeyError, TypeError)):
+        return "Unexpected API response shape; no classification can be trusted."
+    if isinstance(exc, FileNotFoundError):
+        return "GitHub CLI (gh) was not found on PATH; install it or set GH_TOKEN or GITHUB_TOKEN."
+    if isinstance(exc, OSError):
+        return "Local credential helper or network operation failed."
+    return str(exc)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True, help="GitHub owner/repository")
@@ -116,14 +131,7 @@ def main():
     try:
         report = run(args)
     except (ValueError, RuntimeError, OSError, KeyError, TypeError) as exc:
-        # Do not print raw model/PR/HTTP data. Exception strings here are authored locally.
-        if isinstance(exc, (KeyError, TypeError)):
-            message = "Unexpected API response shape; no classification can be trusted."
-        elif isinstance(exc, OSError):
-            message = "Local credential helper or network operation failed."
-        else:
-            message = str(exc)
-        print(f"jev-pr-labeler: {message}", file=sys.stderr)
+        print(f"jev-pr-labeler: {error_message(exc)}", file=sys.stderr)
         return 1
     print(json.dumps(report, indent=2, allow_nan=False))
     return 0

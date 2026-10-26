@@ -7,7 +7,8 @@ import re
 import subprocess
 import sys
 
-from .__main__ import run
+from .__main__ import error_message, run, validate_threshold
+from .evidence import merge_usage
 from .github import GitHub
 
 
@@ -27,6 +28,7 @@ def targets(github, pr=None, check_sha=None, all_open=False):
 
 
 def dispatch(args):
+    validate_threshold(args.threshold)
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if not token:
         token = subprocess.check_output(["gh", "auth", "token"], text=True).strip()
@@ -38,11 +40,21 @@ def dispatch(args):
         single.pr = number
         try:
             reports.append(run(single))
-        except (ValueError, RuntimeError) as exc:
-            # Exception messages are local, never raw HTTP responses or PR content.
-            reports.append({"pull_request": number, "status": "error", "reason": str(exc)})
-    return {"repository": args.repo, "requested_head_sha": args.check_sha,
-            "matched_open_prs": len(numbers), "results": reports}
+        except (ValueError, RuntimeError, OSError, KeyError, TypeError) as exc:
+            reports.append({"pull_request": number, "status": "error", "reason": error_message(exc)})
+    report = {"repository": args.repo, "requested_head_sha": args.check_sha,
+              "matched_open_prs": len(numbers), "results": reports}
+    usages = [item["usage"] for item in reports if isinstance(item.get("usage"), dict)]
+    if usages:
+        # A batch spends real money; report the whole run's usage, not just per PR.
+        report["usage"] = merge_usage({"usage": usage} for usage in usages)
+    if args.check_sha and not numbers:
+        # A check completion can arrive after the PR head moved or the PR closed. No
+        # writes are correct here; make the no-op visible instead of implicitly green.
+        report["status"] = "no_matching_open_prs"
+        report["reason"] = ("No open PR currently has this head SHA. A newer review of the "
+                            "current head triggers its own run.")
+    return report
 
 
 def main():
@@ -60,8 +72,12 @@ def main():
     args = parser.parse_args()
     try:
         report = dispatch(args)
-    except (ValueError, RuntimeError, OSError, KeyError, TypeError, subprocess.CalledProcessError):
-        print("Could not resolve PRs safely. Check credentials and input parameters.", file=sys.stderr)
+    except subprocess.CalledProcessError:
+        print("jev-pr-labeler: could not read a GitHub token from gh; set GH_TOKEN or authenticate gh.",
+              file=sys.stderr)
+        return 1
+    except (ValueError, RuntimeError, OSError, KeyError, TypeError) as exc:
+        print(f"jev-pr-labeler: {error_message(exc)}", file=sys.stderr)
         return 1
     print(json.dumps(report, indent=2, allow_nan=False))
     return int(any(item.get("status") == "error" for item in report["results"]))

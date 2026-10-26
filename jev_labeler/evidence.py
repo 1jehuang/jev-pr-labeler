@@ -185,8 +185,11 @@ def _reduction(state, chunks, summaries):
     return _request(evidence, _REDUCTION)
 
 
-def _usage(responses):
-    """Sum finite numeric usage leaves, ignoring provider nonnumeric annotations."""
+def merge_usage(responses):
+    """Sum finite numeric usage leaves, ignoring provider nonnumeric annotations.
+
+    Shared with batch reporting so per-PR and per-run totals cannot disagree.
+    """
     result = {}
 
     def merge(target, source):
@@ -282,5 +285,5 @@ def classify(state, key, threshold=0.75):
         count = len(chunks)
     return decisions, {"strategy": "hierarchical" if hierarchical else "direct",
                        "chunks": count, "model": responses[-1].get("model", MODEL),
-                       "usage": _usage(responses), "lossy": hierarchical,
+                       "usage": merge_usage(responses), "lossy": hierarchical,
                        "source_content_hash": content_hash}

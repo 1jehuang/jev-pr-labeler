@@ -31,8 +31,10 @@ def snapshot(pr, files, max_bytes=MAX_STATE_BYTES):
                 raise ValueError("A substantive patch is unavailable (binary/large diff); manual labeling required.")
             # GitHub can silently truncate a patch. Hunk headers/context do not count.
             if patch:
-                added = sum(line.startswith("+") for line in patch.splitlines())
-                deleted = sum(line.startswith("-") for line in patch.splitlines())
+                # Git lines end at LF; other separators are source content.
+                lines = patch.split("\n")
+                added = sum(line.startswith("+") for line in lines)
+                deleted = sum(line.startswith("-") for line in lines)
                 if added != file.get("additions", 0) or deleted != file.get("deletions", 0):
                     raise ValueError("GitHub returned a truncated patch; manual labeling required.")
             item["patch"] = patch or "No textual content changed (rename, mode change, or binary metadata)."
